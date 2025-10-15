@@ -1,4 +1,4 @@
-name: Start Ubuntu Desktop + noVNC
+name: Ubuntu Desktop + VNC + noVNC
 
 on: [workflow_dispatch]
 
@@ -11,7 +11,7 @@ jobs:
       NOVNC_PORT: 6080
 
     steps:
-      - name: Checkout (optional)
+      - name: Checkout repository (optional)
         uses: actions/checkout@v4
 
       - name: Install Desktop Environment & VNC
@@ -21,33 +21,28 @@ jobs:
           sudo apt update
           sudo apt install -y xfce4 xfce4-goodies tightvncserver git wget python3-pip
 
-          # أنشئ مجلد vnc وتأكّد الأذونات
+          # إنشاء مجلد VNC وضبط الأذونات
           mkdir -p ~/.vnc
           chmod 700 ~/.vnc
 
-          # استخدم كلمة المرور من Secrets - لا تعرضها في اللوج
+          # التحقق من وجود كلمة مرور VNC في Secret
           if [ -z "${{ secrets.VNC_PASSWORD }}" ]; then
             echo "ERROR: VNC_PASSWORD secret not set"
             exit 1
           fi
 
-          # اكتب كلمة المرور إلى ملف passwd الخاص بـ VNC (vncpasswd -f يقرأ من stdin ويعطي الباينري)
+          # كتابة كلمة المرور إلى ملف passwd الخاص بـ VNC
           echo "${{ secrets.VNC_PASSWORD }}" | vncpasswd -f > ~/.vnc/passwd
           chmod 600 ~/.vnc/passwd
 
-          # أنشئ ملف xstartup الصحيح (startxfce4)
-          cat > ~/.vnc/xstartup <<'XSTART'
-#!/bin/bash
-xrdb $HOME/.Xresources
-# تعطيل شاشة الترحيب لو لزم
-# export XKL_XMODMAP_DISABLE=1
-startxfce4 &
-XSTART
-
+          # إعداد ملف xstartup لتشغيل XFCE
+          cat > ~/.vnc/xstartup <<XSTART 
+          xrdb \$HOME/.Xresources
+          # export XKL_XMODMAP_DISABLE=1
+          startxfce4 & XSTART
           chmod +x ~/.vnc/xstartup
 
-          # شغّل vncserver بالمعايرة المطلوبة
-          # نقتل أي instance قديمة أولًا ثم نشغّل واحدة جديدة
+          # إنهاء أي instance قديمة من VNC وتشغيل واحدة جديدة
           vncserver -kill :1 || true
           vncserver :1 -geometry 1280x720 -depth 24
 
@@ -55,7 +50,7 @@ XSTART
         run: |
           set -euo pipefail
 
-          # clone noVNC and websockify if not present
+          # clone noVNC و websockify إذا لم تكن موجودة
           if [ ! -d "$HOME/noVNC" ]; then
             git clone https://github.com/novnc/noVNC.git "$HOME/noVNC"
           fi
@@ -63,31 +58,24 @@ XSTART
             git clone https://github.com/novnc/websockify.git "$HOME/noVNC/utils/websockify"
           fi
 
-          # تأكد من أن launch.sh قابل للتنفيذ
-          chmod +x "$HOME/noVNC/utils/launch.sh" || true
+          chmod +x "$HOME/noVNC/utils/launch.sh"
 
-          # شغّل noVNC على الخلفية (سيستمع على NOVNC_PORT و يتصل بـ VNC_PORT)
-          # nohup/setsid لتجنّب قتل العملية عند انتهاء الـ job (لكن GitHub runner سينهيها بعد انتهاء الـ job)
+          # تشغيل noVNC على الخلفية
           nohup "$HOME/noVNC/utils/launch.sh" --vnc localhost:${VNC_PORT} --listen ${NOVNC_PORT} >/tmp/novnc.out 2>&1 &
 
-          # قليل انتظار للتأكد أن noVNC بدأ
           sleep 5
           echo "noVNC started, check /tmp/novnc.out for output"
 
-      - name: (Optional) Create reverse tunnel via serveo (insecure / legacy)
+      - name: Optional reverse SSH tunnel (serveo.net)
         run: |
-          # ملاحظة: serveo قد لا يكون دائمًا متاحًا؛ استخدم ngrok أو إعداد SSH مع مفاتيح بدلاً منه.
-          # السطر التالي سيحاول عمل reverse tunnel (قد يطلب كلمة مرور أو فشل)
           nohup ssh -o StrictHostKeyChecking=no -o ExitOnForwardFailure=yes -R 80:localhost:${NOVNC_PORT} serveo.net >/tmp/serveo.out 2>&1 &
           sleep 5 || true
           echo "serveo (attempt) logged to /tmp/serveo.out"
 
-      - name: Show info / tail logs
+      - name: Show connection info
         run: |
-          echo "VNC display: ${DISPLAY}  (VNC port ${VNC_PORT})"
+          echo "VNC display: ${DISPLAY} (port ${VNC_PORT})"
           echo "noVNC web port: ${NOVNC_PORT}"
-          echo "If you used serveo, check /tmp/serveo.out for the public URL (or use ngrok / other tunnel)."
-          echo "---- noVNC log ----"
+          echo "Check /tmp/novnc.out for noVNC logs and /tmp/serveo.out if using serveo"
           tail -n +1 /tmp/novnc.out || true
-          echo "---- serveo log ----"
           tail -n +1 /tmp/serveo.out || true
