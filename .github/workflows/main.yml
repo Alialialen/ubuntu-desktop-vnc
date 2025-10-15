@@ -39,8 +39,8 @@ jobs:
           cat > ~/.vnc/xstartup <<XSTART 
           xrdb \$HOME/.Xresources
           # export XKL_XMODMAP_DISABLE=1
-          startxfce4 & XSTART
-          chmod +x ~/.vnc/xstartup
+           startxfce4 & XSTART
+           chmod +x ~/.vnc/xstartup
 
           # إنهاء أي instance قديمة من VNC وتشغيل واحدة جديدة
           vncserver -kill :1 || true
