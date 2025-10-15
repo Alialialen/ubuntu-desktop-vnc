@@ -1,81 +1,52 @@
-name: Ubuntu Desktop + VNC + noVNC
+name: Ubuntu Desktop with noVNC and Tunnel
 
-on: [workflow_dispatch]
+on:
+  workflow_dispatch:
 
 jobs:
-  build:
+  run-desktop:
     runs-on: ubuntu-latest
-    env:
-      DISPLAY: ":1"
-      VNC_PORT: 5901
-      NOVNC_PORT: 6080
 
     steps:
-      - name: Checkout repository (optional)
-        uses: actions/checkout@v4
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y xfce4 xfce4-goodies tightvncserver git curl wget openssh-client
+        sudo apt install -y python3 python3-pip
+        pip3 install websockify
 
-      - name: Install Desktop Environment & VNC
-        run: |
-          set -euo pipefail
+    - name: Setup VNC server and noVNC
+      run: |
+        mkdir -p ~/.vnc
+        echo "123456" | vncpasswd -f > ~/.vnc/passwd
+        chmod 600 ~/.vnc/passwd
 
-          sudo apt update
-          sudo apt install -y xfce4 xfce4-goodies tightvncserver git wget python3-pip
+        echo '#!/bin/bash
+        xrdb $HOME/.Xresources
+        startxfce4 &' > ~/.vnc/xstartup
+        chmod +x ~/.vnc/xstartup
 
-          # إنشاء مجلد VNC وضبط الأذونات
-          mkdir -p ~/.vnc
-          chmod 700 ~/.vnc
+        vncserver :1 -geometry 1280x720 -depth 24
+        vncserver -kill :1
+        vncserver :1 -geometry 1280x720 -depth 24
 
-          # التحقق من وجود كلمة مرور VNC في Secret
-          if [ -z "${{ secrets.VNC_PASSWORD }}" ]; then
-            echo "ERROR: VNC_PASSWORD secret not set"
-            exit 1
-          fi
+        git clone https://github.com/novnc/noVNC.git ~/noVNC
+        git clone https://github.com/novnc/websockify.git ~/noVNC/utils/websockify
 
-          # كتابة كلمة المرور إلى ملف passwd الخاص بـ VNC
-          echo "${{ secrets.VNC_PASSWORD }}" | vncpasswd -f > ~/.vnc/passwd
-          chmod 600 ~/.vnc/passwd
+    - name: Run noVNC server
+      run: |
+        nohup ~/noVNC/utils/launch.sh --vnc localhost:5901 --listen 6080 &
 
-          # إعداد ملف xstartup لتشغيل XFCE
-          cat > ~/.vnc/xstartup <<XSTART 
-          xrdb \$HOME/.Xresources
-          # export XKL_XMODMAP_DISABLE=1
-           startxfce4 & XSTART
-           chmod +x ~/.vnc/xstartup
+    - name: Create tunnel with serveo.net
+      run: |
+        nohup ssh -o StrictHostKeyChecking=no -R 80:localhost:6080 serveo.net &
+        sleep 10
+        echo "ًںڑ€ Tunnel should be up! Check logs below for the public URL."
+        ps aux | grep ssh
 
-          # إنهاء أي instance قديمة من VNC وتشغيل واحدة جديدة
-          vncserver -kill :1 || true
-          vncserver :1 -geometry 1280x720 -depth 24
-
-      - name: Setup noVNC & websockify
-        run: |
-          set -euo pipefail
-
-          # clone noVNC و websockify إذا لم تكن موجودة
-          if [ ! -d "$HOME/noVNC" ]; then
-            git clone https://github.com/novnc/noVNC.git "$HOME/noVNC"
-          fi
-          if [ ! -d "$HOME/noVNC/utils/websockify" ]; then
-            git clone https://github.com/novnc/websockify.git "$HOME/noVNC/utils/websockify"
-          fi
-
-          chmod +x "$HOME/noVNC/utils/launch.sh"
-
-          # تشغيل noVNC على الخلفية
-          nohup "$HOME/noVNC/utils/launch.sh" --vnc localhost:${VNC_PORT} --listen ${NOVNC_PORT} >/tmp/novnc.out 2>&1 &
-
-          sleep 5
-          echo "noVNC started, check /tmp/novnc.out for output"
-
-      - name: Optional reverse SSH tunnel (serveo.net)
-        run: |
-          nohup ssh -o StrictHostKeyChecking=no -o ExitOnForwardFailure=yes -R 80:localhost:${NOVNC_PORT} serveo.net >/tmp/serveo.out 2>&1 &
-          sleep 5 || true
-          echo "serveo (attempt) logged to /tmp/serveo.out"
-
-      - name: Show connection info
-        run: |
-          echo "VNC display: ${DISPLAY} (port ${VNC_PORT})"
-          echo "noVNC web port: ${NOVNC_PORT}"
-          echo "Check /tmp/novnc.out for noVNC logs and /tmp/serveo.out if using serveo"
-          tail -n +1 /tmp/novnc.out || true
-          tail -n +1 /tmp/serveo.out || true
+    - name: Show connection info
+      run: |
+        echo "-------------------------------------------"
+        echo "ًں”‘ VNC password: 123456"
+        echo "ًںŒگ Open the public URL from the previous step in your browser"
+        echo "-------------------------------------------"
