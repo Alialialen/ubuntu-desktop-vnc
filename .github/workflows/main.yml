@@ -47,6 +47,6 @@ jobs:
     - name: Show connection info
       run: |
         echo "-------------------------------------------"
-        echo "ًں”‘ VNC password: 123456789a@AS"
+        echo "ًں”‘ VNC password: 123456"
         echo "ًںŒگ Open the public URL from the previous step in your browser"
         echo "-------------------------------------------"
